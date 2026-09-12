@@ -10,10 +10,12 @@ Exposes tickets, tasks, changes, assets, users, technicians, knowledge-base arti
 
 - Full **ticket (request) lifecycle**: list, get, create, update, close, trash/force-delete, restore, assign/unassign, hold/unhold, stats, PPM, linked change.
 - Request sub-resources: conversations, notes, tasks, worklogs, assets, followers, **dynamics** (custom fields), resolution.
-- **Change management**: list, get, create, update; change tasks and notes.
-- **Standalone tasks** (not tied to a request) and task worklogs.
-- **Asset inventory**: list, get, create, update, trash/delete, and picklist values by asset type.
-- **People**: technicians, users (create/update), with filtering/pagination via `list_info`.
+- **Change management**: list, get, create, update; change tasks, notes, trash/delete and CAB approve/reject.
+- **Problem management**: full CRUD plus problem notes, tasks, worklogs and request↔problem linking.
+- **Projects**: full CRUD plus milestones, tasks, comments and request↔project linking.
+- **Standalone tasks** (not tied to a request): list, get, create, update, delete, and task worklogs.
+- **Asset inventory**: list, get, create, update, trash/delete, asset types and picklist values.
+- **People**: technicians, users, **requesters** (create/update), with filtering/pagination via `list_info`.
 - **Reference data**: locations, departments, organizations, companies, vendors, request/task/recurring templates.
 - **Knowledge base**: list/get/create solutions (KB articles).
 - **Contracts**: list/get.
@@ -137,12 +139,22 @@ Any client that can launch a local stdio process and feed it environment variabl
 | `list_request_notes` / `get_request_note` / `add_request_note` / `update_request_note` / `delete_request_note` | Internal notes. |
 | `get_request_resolution` | The public resolution record. |
 
+### Request search & extras
+
+| Tool | Description |
+|---|---|
+| `search_requests` | Search tickets by `list_info.search_criteria` (subject, status, requester, …). |
+| `list_request_activities` | Audit/activity trail on a ticket. |
+| `list_request_emails` | Emails associated with a ticket. |
+| `list_request_links` / `add_request_link` | Linked requests. |
+
 ### Request tasks, worklogs, dynamics, followers, assets
 
 | Tool | Description |
 |---|---|
 | `list_request_tasks` / `get_request_task` / `create_request_task` / `update_request_task` / `delete_request_task` | Tasks attached to a ticket. |
-| `list_request_worklogs` / `list_task_worklogs` | Time / log entries. |
+| `list_request_worklogs` / `add_request_worklog` / `update_request_worklog` / `delete_request_worklog` | Time / log entries on a ticket. |
+| `list_task_worklogs` / `add_task_worklog` | Time / log entries on a task. |
 | `get_request_dynamics` / `update_request_dynamics` | Custom (dynamic) field values. |
 | `list_request_followers` / `add_request_follower` | Watchers. |
 | `list_request_assets` / `associate_request_asset` / `dissociate_request_asset` | Asset linkage. |
@@ -153,6 +165,7 @@ Any client that can launch a local stdio process and feed it environment variabl
 |---|---|
 | `list_tasks` | Standalone tasks (paginate via `list_info`). |
 | `get_task` | One general task. |
+| `create_task` / `update_task` / `delete_task` | Standalone task lifecycle. |
 
 ### Changes
 
@@ -161,6 +174,26 @@ Any client that can launch a local stdio process and feed it environment variabl
 | `list_changes` / `get_change` / `create_change` / `update_change` | Change requests (`create_change` requires `title`; accepts template, category, schedule, workflow, stage, status, tags, notes, etc.). |
 | `list_change_tasks` / `get_change_task` / `add_change_task` / `update_change_task` / `delete_change_task` | Change tasks (`add_change_task` requires `title`, `stage`). |
 | `list_change_notes` / `add_change_note` | Change notes. |
+| `delete_change` | Trash a change, or permanent delete with `force: true`. |
+| `approve_change` / `reject_change` | Approve / reject a change (CAB). |
+
+### Problems
+
+| Tool | Description |
+|---|---|
+| `list_problems` / `get_problem` / `create_problem` / `update_problem` / `delete_problem` | Problem records (CRUD). |
+| `add_problem_note` / `add_problem_task` / `add_problem_worklog` | Problem notes, tasks, time entries. |
+| `associate_problem` / `get_request_problem` / `dissociate_problem` | Link a problem to a ticket and back. |
+
+### Projects
+
+| Tool | Description |
+|---|---|
+| `list_projects` / `get_project` / `create_project` / `update_project` | Projects (CRUD). |
+| `list_project_milestones` / `add_project_milestone` | Project milestones. |
+| `list_project_tasks` / `get_project_task` / `add_project_task` | Project tasks. |
+| `list_project_comments` / `add_project_comment` | Project comments. |
+| `associate_project` / `get_request_project` / `dissociate_project` | Link a project to a ticket and back. |
 
 ### Assets
 
@@ -168,6 +201,7 @@ Any client that can launch a local stdio process and feed it environment variabl
 |---|---|
 | `list_assets` / `get_asset` / `create_asset` / `update_asset` / `delete_asset` | Asset inventory lifecycle. |
 | `get_asset_picklist` | Picklist values for an asset type. |
+| `list_asset_types` | Configured asset types. |
 
 ### People
 
@@ -175,6 +209,7 @@ Any client that can launch a local stdio process and feed it environment variabl
 |---|---|
 | `list_technicians` / `get_technician` | Technician accounts. |
 | `list_users` / `get_user` / `create_user` / `update_user` | Users (filter by `search_criteria`, e.g. `{type, is, Technician}`). |
+| `list_requesters` / `get_requester` / `create_requester` | Requesters (end users who raise tickets). |
 
 ### Reference data
 
@@ -186,7 +221,7 @@ Any client that can launch a local stdio process and feed it environment variabl
 | `list_companies` | Companies. |
 | `list_vendors` / `get_vendor` | Vendors. |
 | `list_request_templates` / `list_task_templates` / `list_recurring_templates` | Templates. |
-| `list_solutions` / `get_solution` / `create_solution` | Knowledge base articles. |
+| `list_solutions` / `get_solution` / `create_solution` / `update_solution` / `delete_solution` | Knowledge base articles. |
 | `list_contracts` / `get_contract` | Contracts. |
 
 ### Groups (derived)
@@ -215,6 +250,8 @@ These are behaviors observed on the source instance (`assist.webwerks.in`); your
 - **No query filters on `list_requests`** — the instance rejects filter parameters; only `get_request` returns full detail.
 - **`/comments` returns 404** — use `list_request_conversations` / `add_request_conversation` instead.
 - **No native `/groups` endpoint** — `list_groups` derives groups by scanning change/task records (up to 50 pages of 100 each). If your instance exposes `/groups`, replace `derivedGroups()` with a direct call.
+- **`search_requests`** depends on tenancy — some SDP servers reject `search_criteria` on `GET /requests`; `list_requests` (unfiltered) is the safe fallback.
+- **`approve_change` / `reject_change`** follow the documented `{change:{approve:...}}` shape but submit direction varies across instances — if they fail, use `sdp_call` with the raw endpoint.
 - **`assign_request` payload encoding** is instance-specific; simplest is to copy a technician object obtained from `get_request`.
 
 ## Development

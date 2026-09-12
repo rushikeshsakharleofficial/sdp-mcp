@@ -287,6 +287,47 @@ reg(
   (a) => sdp("POST", `requests/${a.request_id}/followers`, {}, { request: a.body }),
 );
 
+// ---- Request search & extras ----
+reg(
+  "search_requests",
+  "Search Requests",
+  "Search tickets with list_info search_criteria (e.g. subject, status, requester). Returns matching tickets (instance may reject filters — fall back to list_requests / sdp_call).",
+  { list_info: LIST_INFO },
+  (a) => sdp("GET", "requests", listParams(a.list_info)),
+);
+
+reg(
+  "list_request_activities",
+  "List Request Activities",
+  "Activity/audit trail on a ticket.",
+  { request_id: ID },
+  (a) => sdp("GET", `requests/${a.request_id}/activities`),
+);
+
+reg(
+  "list_request_emails",
+  "List Request Emails",
+  "Emails associated with a ticket.",
+  { request_id: ID },
+  (a) => sdp("GET", `requests/${a.request_id}/emails`),
+);
+
+reg(
+  "list_request_links",
+  "List Request Links",
+  "Requests linked to a ticket.",
+  { request_id: ID },
+  (a) => sdp("GET", `requests/${a.request_id}/links`),
+);
+
+reg(
+  "add_request_link",
+  "Add Request Link",
+  "Link another request to a ticket. Body: {to_request:{id:...}} or {link:{...}} per instance.",
+  { request_id: ID, body: RECORD.describe("Link fields") },
+  (a) => sdp("POST", `requests/${a.request_id}/links`, {}, a.body ?? {}),
+);
+
 // ---- Request notes ----
 reg(
   "list_request_notes",
@@ -352,6 +393,38 @@ reg(
   (a) => sdp("GET", `tasks/${a.task_id}/worklogs`, listParams(a.list_info)),
 );
 
+reg(
+  "add_request_worklog",
+  "Add Request Worklog",
+  "Log time on a ticket. Body: {desc, work_type, time_spent, billable, ...}.",
+  { request_id: ID, body: RECORD.describe("Worklog fields") },
+  (a) => sdp("POST", `requests/${a.request_id}/worklogs`, {}, { worklog: a.body }),
+);
+
+reg(
+  "update_request_worklog",
+  "Update Request Worklog",
+  "Edit a worklog entry on a ticket.",
+  { request_id: ID, worklog_id: ID, body: RECORD.describe("Worklog fields") },
+  (a) => sdp("PUT", `requests/${a.request_id}/worklogs/${a.worklog_id}`, {}, { worklog: a.body }),
+);
+
+reg(
+  "delete_request_worklog",
+  "Delete Request Worklog",
+  "Remove a worklog entry from a ticket.",
+  { request_id: ID, worklog_id: ID },
+  (a) => sdp("DELETE", `requests/${a.request_id}/worklogs/${a.worklog_id}`),
+);
+
+reg(
+  "add_task_worklog",
+  "Add Task Worklog",
+  "Log time on a general task.",
+  { task_id: ID, body: RECORD.describe("Worklog fields") },
+  (a) => sdp("POST", `tasks/${a.task_id}/worklogs`, {}, { worklog: a.body }),
+);
+
 // ---- Templates & recurrence ----
 reg("list_recurring_templates", "List Recurring Templates", "Recurring request templates.", {}, () => sdp("GET", "requests/recurring_templates"));
 reg("list_request_templates", "List Request Templates", "Request templates.", {}, () => sdp("GET", "request_templates"));
@@ -366,6 +439,27 @@ reg(
   (a) => sdp("GET", "tasks", listParams(a.list_info)),
 );
 reg("get_task", "Get General Task", "One general task.", { task_id: ID }, (a) => sdp("GET", `tasks/${a.task_id}`));
+reg(
+  "create_task",
+  "Create General Task",
+  "Create a standalone task. Body: subject, description, planned_start_time, planned_end_time, scheduled_time, duration, watchers.",
+  { body: RECORD.describe("Task fields") },
+  (a) => sdp("POST", "tasks", {}, { task: a.body }),
+);
+reg(
+  "update_task",
+  "Update General Task",
+  "Edit a standalone task.",
+  { task_id: ID, body: RECORD.describe("Task fields") },
+  (a) => sdp("PUT", `tasks/${a.task_id}`, {}, { task: a.body }),
+);
+reg(
+  "delete_task",
+  "Delete General Task",
+  "Trash a standalone task, or permanent delete if force=true.",
+  { task_id: ID, force: z.boolean().optional() },
+  (a) => (a.force ? sdp("DELETE", `tasks/${a.task_id}/force`) : sdp("POST", `tasks/${a.task_id}/trash`)),
+);
 
 // ---- Changes ----
 reg(
@@ -442,6 +536,178 @@ reg(
   (a) => sdp("POST", `changes/${a.change_id}/notes`, {}, { note: a.body }),
 );
 
+reg(
+  "delete_change",
+  "Delete Change",
+  "Trash a change request, or permanent delete if force=true.",
+  { change_id: ID, force: z.boolean().optional() },
+  (a) => (a.force ? sdp("DELETE", `changes/${a.change_id}/force`) : sdp("POST", `changes/${a.change_id}/trash`)),
+);
+
+reg(
+  "approve_change",
+  "Approve Change",
+  "Approve a change. Pass change body with approve/comments if the instance requires them.",
+  { change_id: ID, body: RECORD.optional().describe("e.g. {approve: true, comments: '...'}") },
+  (a) => sdp("PUT", `changes/${a.change_id}/approve`, {}, a.body ? { change: a.body } : { change: { approve: true } }),
+);
+
+reg(
+  "reject_change",
+  "Reject Change",
+  "Reject a change. Pass change body with approve/comments if the instance requires them.",
+  { change_id: ID, body: RECORD.optional().describe("e.g. {approve: false, comments: '...'}") },
+  (a) => sdp("PUT", `changes/${a.change_id}/reject`, {}, a.body ? { change: a.body } : { change: { approve: false } }),
+);
+
+// ---- Problems ----
+reg(
+  "list_problems",
+  "List Problems",
+  "List problem records.",
+  { list_info: LIST_INFO },
+  (a) => sdp("GET", "problems", listParams(a.list_info)),
+);
+reg("get_problem", "Get Problem", "Problem detail.", { problem_id: ID }, (a) => sdp("GET", `problems/${a.problem_id}`));
+reg(
+  "create_problem",
+  "Create Problem",
+  "Create a problem record. Body: subject, description, status, technician, group, category, etc.",
+  { body: RECORD.describe("Problem fields") },
+  (a) => sdp("POST", "problems", {}, { problem: a.body }),
+);
+reg(
+  "update_problem",
+  "Update Problem",
+  "Edit a problem record.",
+  { problem_id: ID, body: RECORD.describe("Problem fields") },
+  (a) => sdp("PUT", `problems/${a.problem_id}`, {}, { problem: a.body }),
+);
+reg(
+  "delete_problem",
+  "Delete Problem",
+  "Trash a problem record, or permanent delete if force=true.",
+  { problem_id: ID, force: z.boolean().optional() },
+  (a) => (a.force ? sdp("DELETE", `problems/${a.problem_id}/force`) : sdp("POST", `problems/${a.problem_id}/trash`)),
+);
+reg(
+  "add_problem_note",
+  "Add Problem Note",
+  "Add a note to a problem.",
+  { problem_id: ID, body: RECORD.describe("Note fields") },
+  (a) => sdp("POST", `problems/${a.problem_id}/notes`, {}, { note: a.body }),
+);
+reg(
+  "add_problem_task",
+  "Add Problem Task",
+  "Add a task to a problem.",
+  { problem_id: ID, body: RECORD.describe("Task fields") },
+  (a) => sdp("POST", `problems/${a.problem_id}/tasks`, {}, { task: a.body }),
+);
+reg(
+  "add_problem_worklog",
+  "Add Problem Worklog",
+  "Log time on a problem.",
+  { problem_id: ID, body: RECORD.describe("Worklog fields") },
+  (a) => sdp("POST", `problems/${a.problem_id}/worklogs`, {}, { worklog: a.body }),
+);
+
+reg(
+  "associate_problem",
+  "Associate Problem",
+  "Attach a problem to a ticket.",
+  { request_id: ID, body: RECORD.describe("e.g. {problem: {id: 123}}") },
+  (a) => sdp("POST", `requests/${a.request_id}/problem`, {}, a.body ?? {}),
+);
+reg("get_request_problem", "Get Request Problem", "Problem associated with a ticket.", { request_id: ID }, (a) => sdp("GET", `requests/${a.request_id}/problem`));
+reg("dissociate_problem", "Dissociate Problem", "Detach a problem from a ticket.", { request_id: ID }, (a) => sdp("DELETE", `requests/${a.request_id}/problem`));
+
+// ---- Projects ----
+reg(
+  "list_projects",
+  "List Projects",
+  "List projects.",
+  { list_info: LIST_INFO },
+  (a) => sdp("GET", "projects", listParams(a.list_info)),
+);
+reg("get_project", "Get Project", "Project detail.", { project_id: ID }, (a) => sdp("GET", `projects/${a.project_id}`));
+reg(
+  "create_project",
+  "Create Project",
+  "Create a project. Body: name, description, project_status, project_manager, group, scheduled_start_time, scheduled_end_time, etc.",
+  { body: RECORD.describe("Project fields") },
+  (a) => sdp("POST", "projects", {}, { project: a.body }),
+);
+reg(
+  "update_project",
+  "Update Project",
+  "Edit a project.",
+  { project_id: ID, body: RECORD.describe("Project fields") },
+  (a) => sdp("PUT", `projects/${a.project_id}`, {}, { project: a.body }),
+);
+
+reg(
+  "list_project_milestones",
+  "List Project Milestones",
+  "Milestones on a project.",
+  { project_id: ID },
+  (a) => sdp("GET", `projects/${a.project_id}/milestones`),
+);
+reg(
+  "add_project_milestone",
+  "Add Project Milestone",
+  "Add a milestone to a project. Body: name, start_date, end_date, etc.",
+  { project_id: ID, body: RECORD.describe("Milestone fields") },
+  (a) => sdp("POST", `projects/${a.project_id}/milestones`, {}, { milestone: a.body }),
+);
+
+reg(
+  "list_project_tasks",
+  "List Project Tasks",
+  "Tasks on a project.",
+  { project_id: ID },
+  (a) => sdp("GET", `projects/${a.project_id}/tasks`),
+);
+reg(
+  "get_project_task",
+  "Get Project Task",
+  "One task on a project.",
+  { project_id: ID, task_id: ID },
+  (a) => sdp("GET", `projects/${a.project_id}/tasks/${a.task_id}`),
+);
+reg(
+  "add_project_task",
+  "Add Project Task",
+  "Add a task to a project. Body: subject, description, planned_start_time, planned_end_time, duration.",
+  { project_id: ID, body: RECORD.describe("Task fields") },
+  (a) => sdp("POST", `projects/${a.project_id}/tasks`, {}, { task: a.body }),
+);
+
+reg(
+  "list_project_comments",
+  "List Project Comments",
+  "Comments on a project.",
+  { project_id: ID },
+  (a) => sdp("GET", `projects/${a.project_id}/comments`),
+);
+reg(
+  "add_project_comment",
+  "Add Project Comment",
+  "Add a comment to a project. Body: content, is_public.",
+  { project_id: ID, body: RECORD.describe("Comment fields") },
+  (a) => sdp("POST", `projects/${a.project_id}/comments`, {}, { comment: a.body }),
+);
+
+reg(
+  "associate_project",
+  "Associate Project",
+  "Attach a project to a ticket.",
+  { request_id: ID, body: RECORD.describe("e.g. {project: {id: 123}}") },
+  (a) => sdp("POST", `requests/${a.request_id}/project`, {}, a.body ?? {}),
+);
+reg("get_request_project", "Get Request Project", "Project associated with a ticket.", { request_id: ID }, (a) => sdp("GET", `requests/${a.request_id}/project`));
+reg("dissociate_project", "Dissociate Project", "Detach a project from a ticket.", { request_id: ID }, (a) => sdp("DELETE", `requests/${a.request_id}/project`));
+
 // ---- Assets ----
 reg("list_assets", "List Assets", "Asset inventory (default page).", {}, () => sdp("GET", "assets"));
 reg(
@@ -479,6 +745,7 @@ reg(
   { asset_type_id: z.number() },
   (a) => sdp("GET", `assets/picklist/${a.asset_type_id}`),
 );
+reg("list_asset_types", "List Asset Types", "Asset types/manufacturer models configured in SDP.", {}, () => sdp("GET", "asset_types"));
 
 // ---- People ----
 reg("list_technicians", "List Technicians", "Technician accounts (needs permission).", {}, () => sdp("GET", "technicians"));
@@ -504,6 +771,23 @@ reg(
   "Edit a user.",
   { user_id: ID, body: RECORD.describe("User fields") },
   (a) => sdp("PUT", `users/${a.user_id}`, {}, { user: a.body }),
+);
+
+// ---- Requesters ----
+reg(
+  "list_requesters",
+  "List Requesters",
+  "List requesters (end users who raise tickets).",
+  { list_info: LIST_INFO },
+  (a) => sdp("GET", "requesters", listParams(a.list_info)),
+);
+reg("get_requester", "Get Requester", "Requester detail.", { requester_id: ID }, (a) => sdp("GET", `requesters/${a.requester_id}`));
+reg(
+  "create_requester",
+  "Create Requester",
+  "Create a requester account. Body: name, email_id, phone, mobile, department, site, etc.",
+  { body: RECORD.describe("Requester fields") },
+  (a) => sdp("POST", "requesters", {}, { requester: a.body }),
 );
 
 // ---- Reference data ----
@@ -560,6 +844,20 @@ reg(
   "Create a KB article. Body: subject, description, solution_type, status, category.",
   { body: RECORD.describe("Solution fields") },
   (a) => sdp("POST", "solutions", {}, { solution: a.body }),
+);
+reg(
+  "update_solution",
+  "Update Solution",
+  "Edit a KB article.",
+  { solution_id: ID, body: RECORD.describe("Solution fields") },
+  (a) => sdp("PUT", `solutions/${a.solution_id}`, {}, { solution: a.body }),
+);
+reg(
+  "delete_solution",
+  "Delete Solution",
+  "Move a KB article to trash (or permanent delete if force=true).",
+  { solution_id: ID, force: z.boolean().optional() },
+  (a) => (a.force ? sdp("DELETE", `solutions/${a.solution_id}/force`) : sdp("POST", `solutions/${a.solution_id}/trash`)),
 );
 
 // ---- Contracts ----
