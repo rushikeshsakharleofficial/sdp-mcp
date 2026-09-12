@@ -143,7 +143,7 @@ reg(
   "Assign Request",
   "Assign ticket to a technician.",
   { request_id: ID, technician: z.string(), body: RECORD.optional() },
-  (a) => sdp("POST", `requests/${a.request_id}/assign`, {}, a.body ?? { request: { technician: { name: a.technician } } }),
+  (a) => sdp("PUT", `requests/${a.request_id}/assign`, {}, a.body ?? { request: { technician: { name: a.technician } } }),
 );
 
 reg(
@@ -151,7 +151,7 @@ reg(
   "Unassign Request",
   "Remove assigned technician.",
   { request_id: ID },
-  (a) => sdp("POST", `requests/${a.request_id}/unassign`),
+  (a) => sdp("PUT", `requests/${a.request_id}/unassign`),
 );
 
 reg(
