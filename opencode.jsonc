@@ -1,4 +1,5 @@
 {
+  "$schema": "https://opencode.ai/config.json",
   "mcp": {
     "code-review-graph": {
       "type": "local",
@@ -10,20 +11,6 @@
         "--repo",
         "/Users/rsakharle/Projects/sdp-mcp"
       ]
-    },
-    "sdp": {
-      "type": "local",
-      "command": [
-        "node",
-        "/Users/rsakharle/Projects/sdp-mcp/server.js"
-      ],
-      "environment": {
-        "SDP_BASE_URL": "{env:SDP_BASE_URL}",
-        "SDP_AUTHTOKEN": "{env:SDP_AUTHTOKEN}",
-        "SDP_API_KEY": "{env:SDP_API_KEY}",
-        "SDP_OAUTH_TOKEN": "{env:SDP_OAUTH_TOKEN}",
-        "SDP_EMAIL": "{env:SDP_EMAIL}"
-      }
     }
   }
 }
