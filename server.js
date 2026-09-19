@@ -11,6 +11,7 @@ if (!token && !oauth) throw new Error("Set SDP_API_KEY, SDP_AUTHTOKEN, or SDP_OA
 
 const ID = z.union([z.number().int().nonnegative(), z.string().min(1).regex(/^[^/?#\\%]+$/)]);
 const RECORD = z.record(z.string(), z.unknown());
+const EMAILS = z.array(z.string().email()).nonempty();
 const LIST = z.object({ search_criteria: z.union([RECORD, z.array(RECORD)]).optional(), row_count: z.number().int().positive().max(100).optional(), start_index: z.number().int().positive().optional(), sort_field: z.string().optional(), sort_order: z.enum(["asc", "desc"]).optional(), get_total_count: z.boolean().optional(), fields_required: z.array(z.string()).optional() }).optional();
 const listParams = (list) => list ? { input_data: JSON.stringify({ list_info: list }) } : {};
 const requestPath = (id) => "requests/" + id;
@@ -47,7 +48,8 @@ tool("update_request", "Update Request", "Update a request.", { request_id: ID, 
 tool("delete_request", "Delete Request", "Trash a request, or permanently delete it with force.", { request_id: ID, force: z.boolean().optional() }, (a) => sdp("DELETE", requestPath(a.request_id) + (a.force ? "" : "/move_to_trash")));
 tool("restore_request", "Restore Request", "Restore a request from trash.", idSchema("request_id"), (a) => sdp("PUT", requestPath(a.request_id) + "/restore_from_trash", {}, 1));
 tool("close_request", "Close Request", "Close with closure_info.", { request_id: ID, closure_info: RECORD }, (a) => sdp("PUT", requestPath(a.request_id) + "/close", {}, { request: { closure_info: a.closure_info } }));
-tool("assign_request", "Assign Request", "Assign through the normal request update route; use technician and group objects from get_request.", { request_id: ID, technician: RECORD, group: RECORD }, (a) => sdp("PUT", requestPath(a.request_id), {}, { request: { technician: a.technician, group: a.group } }));
+tool("assign_request", "Assign Request", "Assign through the normal request update route. The group must belong to the target technician; do not copy the request's current group when changing L1/L2 ownership.", { request_id: ID, technician: RECORD, group: RECORD }, (a) => sdp("PUT", requestPath(a.request_id), {}, { request: { technician: a.technician, group: a.group } }));
+tool("save_request_draft", "Save Request Reply Draft", "Save an unsent public reply draft. It never sends the message.", { request_id: ID, to: EMAILS, cc: z.array(z.string().email()).optional(), bcc: z.array(z.string().email()).optional(), subject: z.string().min(1), description: z.string().min(1), type: z.string().optional() }, (a) => sdp("POST", requestPath(a.request_id) + "/drafts", {}, { draft: { description: a.description, subject: a.subject, content_type: "text/html", type: a.type || "reply", to: a.to.map((email_id) => ({ email_id })), ...(a.cc && { cc: a.cc.map((email_id) => ({ email_id })) }), ...(a.bcc && { bcc: a.bcc.map((email_id) => ({ email_id })) }) } }));
 tool("pickup_request", "Pick Up Request", "Assign to the authenticated technician.", idSchema("request_id"), (a) => sdp("PUT", requestPath(a.request_id) + "/pickup", {}, 1));
 tool("get_request_summary", "Get Request Summary", "Get request counts.", idSchema("request_id"), (a) => sdp("GET", requestPath(a.request_id) + "/summary"));
 tool("get_request_resolution", "Get Request Resolution", "Get a resolution.", idSchema("request_id"), (a) => sdp("GET", requestPath(a.request_id) + "/resolutions"));

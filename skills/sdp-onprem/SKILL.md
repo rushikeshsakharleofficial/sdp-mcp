@@ -30,7 +30,9 @@ Require explicit user approval immediately before a write. For a temporary live 
 }
 ```
 
-Use `assign_request` with those two objects. Get a technician through `list_users` (filter by name or email, and confirm `is_technician: true`); this account may not have permission for the `technicians` endpoint.
+Use `assign_request` with those two objects. The group must be one the target technician can own; never copy the current request group when the handover crosses L1/L2. Find a valid group from the target technician's existing assignments, matching the request site when possible. Get a technician through `list_users` (filter by name or email, and confirm `is_technician: true`); this account may not have permission for the `technicians` endpoint.
+
+- To save a reply without sending it, use `save_request_draft` with the intended `to` addresses, subject, and HTML description. It writes only an editable ticket draft; use a separate, explicit action to send a reply.
 
 ## Diagnostics
 

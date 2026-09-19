@@ -27,8 +27,15 @@ Dedicated tools use only documented v3 routes:
 - Change trash and restore.
 
 \`assign_request\` uses \`PUT /requests/{id}\`, not the tenant-specific
-\`/assign\` action. Provide both \`technician\` and \`group\` objects from
-\`get_request\`.
+\`/assign\` action. Provide both \`technician\` and \`group\` objects. The
+group must belong to the target technician; do not reuse the request's current
+group when handing off between L1 and L2. For example, Pramod Patil uses
+\`{ "id": "315", "name": "L2-Server Administrator", "site": null }\` for
+non-Webwerks sites.
+
+\`save_request_draft\` saves an unsent public reply in the ticket's draft
+panel. It requires the recipient addresses and HTML description, and never
+sends the message.
 
 ## Every other endpoint
 

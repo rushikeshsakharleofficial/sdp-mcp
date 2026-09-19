@@ -29,13 +29,13 @@ test("rejects endpoint traversal before making an API call", async () => {
   assert.match(result.result.content[0].text, /without dot segments/);
 });
 
-test("sends v3 mutations as form-encoded input_data with an authtoken", async () => {
-  let received;
+test("sends assignments and reply drafts as form-encoded input_data with an authtoken", async () => {
+  const received = [];
   const api = createServer((request, response) => {
     let body = "";
     request.on("data", (chunk) => { body += chunk; });
     request.on("end", () => {
-      received = { method: request.method, url: request.url, headers: request.headers, body };
+      received.push({ method: request.method, url: request.url, headers: request.headers, body });
       response.setHeader("Content-Type", "application/json");
       response.end('{"response_status":{"status":"success"}}');
     });
@@ -54,20 +54,24 @@ test("sends v3 mutations as form-encoded input_data with an authtoken", async ()
       pending = lines.pop();
       for (const line of lines) {
         const message = JSON.parse(line);
-        if (message.id === 2) resolve(message);
+        if (message.id === 3) resolve(message);
       }
     });
     child.on("error", reject);
     child.stderr.on("data", reject);
   });
   child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } } })}\n`);
-  child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "sdp_call", arguments: { method: "POST", endpoint: "requests", body: { request: { subject: "Test" } } } } })}\n`);
+  child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "assign_request", arguments: { request_id: "1177297", technician: { id: "2159", name: "Pramod Patil" }, group: { id: "315", name: "L2-Server Administrator", site: null } } } })}\n`);
+  child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "save_request_draft", arguments: { request_id: "1198792", to: ["bhanu@sarahtech.com"], cc: ["support@sarahtech.com"], subject: "RDP meeting", description: "<p>Please join the meeting.</p>" } } })}\n`);
   await response.finally(() => child.kill());
   await new Promise((resolve) => api.close(resolve));
-  assert.equal(received.method, "POST");
-  assert.equal(received.url, "/api/v3/requests");
-  assert.equal(received.headers.authtoken, "test-key");
-  assert.match(received.headers.accept, /application\/vnd\.manageengine\.sdp\.v3\+json/);
-  assert.match(received.headers["content-type"], /application\/x-www-form-urlencoded/);
-  assert.equal(new URLSearchParams(received.body).get("input_data"), '{"request":{"subject":"Test"}}');
+  const assignment = received.find((request) => request.url === "/api/v3/requests/1177297");
+  const draft = received.find((request) => request.url === "/api/v3/requests/1198792/drafts");
+  assert.equal(assignment.method, "PUT");
+  assert.equal(assignment.headers.authtoken, "test-key");
+  assert.match(assignment.headers.accept, /application\/vnd\.manageengine\.sdp\.v3\+json/);
+  assert.match(assignment.headers["content-type"], /application\/x-www-form-urlencoded/);
+  assert.equal(new URLSearchParams(assignment.body).get("input_data"), '{"request":{"technician":{"id":"2159","name":"Pramod Patil"},"group":{"id":"315","name":"L2-Server Administrator","site":null}}}');
+  assert.equal(draft.method, "POST");
+  assert.equal(new URLSearchParams(draft.body).get("input_data"), '{"draft":{"description":"<p>Please join the meeting.</p>","subject":"RDP meeting","content_type":"text/html","type":"reply","to":[{"email_id":"bhanu@sarahtech.com"}],"cc":[{"email_id":"support@sarahtech.com"}]}}');
 });
