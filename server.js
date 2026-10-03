@@ -1,15 +1,26 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 const base = (process.env.SDP_BASE_URL || "").replace(/\/+$/, "");
 const token = process.env.SDP_AUTHTOKEN || process.env.SDP_API_KEY || "";
 const oauth = process.env.SDP_OAUTH_TOKEN || "";
 if (!base) throw new Error("SDP_BASE_URL is required");
-try { if (!["http:", "https:"].includes(new URL(base).protocol)) throw new Error(); } catch { throw new Error("SDP_BASE_URL must be an HTTP(S) URL"); }
+try { const url = new URL(base); if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash || /[?#]/.test(base)) throw new Error(); } catch { throw new Error("SDP_BASE_URL must be an HTTP(S) URL without credentials, query, or fragment"); }
 if (!token && !oauth) throw new Error("Set SDP_API_KEY, SDP_AUTHTOKEN, or SDP_OAUTH_TOKEN");
+const timeout = Number(process.env.SDP_TIMEOUT_MS || 30000);
+if (!Number.isSafeInteger(timeout) || timeout <= 0 || timeout > 2147483647) throw new Error("SDP_TIMEOUT_MS must be a positive integer no greater than 2147483647");
+const calls = new AsyncLocalStorage();
+function redact(value) {
+  let text = String(value);
+  for (const secret of [token, oauth].filter(Boolean)) {
+    for (const variant of new Set([secret, JSON.stringify(secret).slice(1, -1), encodeURIComponent(secret), new URLSearchParams({ value: secret }).toString().slice(6)])) text = text.replaceAll(variant, "[REDACTED]");
+  }
+  return text;
+}
 
-const ID = z.union([z.number().int().nonnegative(), z.string().min(1).regex(/^[^/?#\\%]+$/)]);
+const ID = z.union([z.number().int().positive(), z.string().regex(/^[0-9]+$/).refine((id) => /[1-9]/.test(id), "ID must be positive")]);
 const RECORD = z.record(z.string(), z.unknown());
 const EMAILS = z.array(z.string().email()).nonempty();
 const LIST = z.object({ search_criteria: z.union([RECORD, z.array(RECORD)]).optional(), row_count: z.number().int().positive().max(100).optional(), start_index: z.number().int().positive().optional(), sort_field: z.string().optional(), sort_order: z.enum(["asc", "desc"]).optional(), get_total_count: z.boolean().optional(), fields_required: z.array(z.string()).optional() }).optional();
@@ -18,28 +29,31 @@ const requestPath = (id) => "requests/" + id;
 
 async function sdp(method, endpoint, params = {}, body) {
   const path = endpoint.replace(/^\/+/, "");
-  if (!path || path.split("/").some((part) => !part || part === "." || part === "..")) throw new Error("API endpoint must be a non-empty path without dot segments");
+  if (!path || /[?#\\%\s\x00-\x1f\x7f]/.test(path) || path.split("/").some((part) => !part || part === "." || part === "..")) throw new Error("API endpoint must be a non-empty path without dot segments, escapes, whitespace, query, or fragment");
   const url = new URL(base + "/api/v3/" + path.split("/").map(encodeURIComponent).join("/"));
   for (const [key, value] of Object.entries(params)) if (value != null && value !== "") url.searchParams.append(key, value);
   if (method === "GET" && body !== undefined) url.searchParams.set("input_data", JSON.stringify(body));
   const headers = { Accept: "application/vnd.manageengine.sdp.v3+json", "Content-Type": "application/x-www-form-urlencoded" };
   if (oauth) { headers.Authorization = "Bearer " + oauth; if (process.env.SDP_EMAIL) headers.USER = process.env.SDP_EMAIL; } else { headers.authtoken = token; headers.TECHNICIAN_KEY = token; }
-  const init = { method, headers };
-  if (method !== "GET" && body !== undefined) init.body = new URLSearchParams({ input_data: JSON.stringify(body) });
+  const signal = calls.getStore();
+  const init = { method, headers, redirect: "error", signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout) };
+  if (method !== "GET" && body !== undefined) init.body = new URLSearchParams({ input_data: typeof body === "string" ? body : JSON.stringify(body) });
   const response = await fetch(url, init), text = await response.text();
-  let data; try { data = JSON.parse(text); } catch { data = { raw: text }; }
-  if (!response.ok) throw new Error("SDP " + method + " " + endpoint + " -> " + response.status + ": " + JSON.stringify(data));
+  if (!text && response.status === 204) return { response_status: { status: "success" } };
+  let data; try { data = JSON.parse(text); } catch { throw new Error("SDP " + method + " " + endpoint + " -> " + response.status + ": expected a JSON response"); }
+  const statuses = Array.isArray(data?.response_status) ? data.response_status : [data?.response_status];
+  if (!response.ok || statuses.some((status) => status && ((status.status && status.status !== "success") || (status.status_code != null && !/^2\d{3}$/.test(String(status.status_code)))))) throw new Error("SDP " + method + " " + endpoint + " -> " + response.status + ": " + JSON.stringify(data));
   return data;
 }
 const server = new McpServer({ name: "imdc-sdp", version: "2.0.0" });
 function tool(name, title, description, inputSchema, handler) {
-  server.registerTool(name, { title, description, inputSchema }, async (args) => {
-    try { return { content: [{ type: "text", text: JSON.stringify(await handler(args), null, 2) }] }; }
-    catch (error) { return { isError: true, content: [{ type: "text", text: error.message }] }; }
+  server.registerTool(name, { title, description, inputSchema }, async (args, extra) => {
+    try { return { content: [{ type: "text", text: redact(JSON.stringify(await calls.run(extra.signal, () => handler(args)), null, 2)) }] }; }
+    catch (error) { return { isError: true, content: [{ type: "text", text: redact(error instanceof Error ? error.message : error) }] }; }
   });
 }
 const idSchema = (key) => ({ [key]: ID });
-tool("sdp_call", "Generic SDP API Call", "Call any SDP v3 endpoint. Write bodies are form-encoded as input_data.", { method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]), endpoint: z.string(), params: RECORD.optional(), body: z.any().optional() }, (a) => sdp(a.method, a.endpoint, a.params || {}, a.body));
+tool("sdp_call", "Generic SDP API Call", "Call any SDP v3 endpoint. Write bodies are form-encoded as input_data; string bodies are sent verbatim.", { method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]), endpoint: z.string().min(1), params: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(), body: z.any().optional() }, (a) => sdp(a.method, a.endpoint, a.params || {}, a.body));
 
 tool("list_requests", "List Requests", "List requests.", { list_info: LIST }, (a) => sdp("GET", "requests", listParams(a.list_info)));
 tool("get_request", "Get Request", "Get a request.", idSchema("request_id"), (a) => sdp("GET", requestPath(a.request_id)));
